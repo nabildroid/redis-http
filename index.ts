@@ -2,12 +2,30 @@ import Redis from "ioredis";
 
 import { Hono } from "hono";
 
+import Bull from "bull";
+import axios from "axios";
 
-export const Redist = new Redis({
+const RedisConfig = {
     host: "localhost",
     port: 6379,
-});
+}
+export const Redist = new Redis(RedisConfig);
 
+const schedulerQueue = new Bull("scheduler", {
+    redis: RedisConfig
+})
+
+schedulerQueue.process(async (task) => {
+    const { url, body } = task.data
+
+    console.log("handling", url, body)
+
+    await axios.post(url, body, {
+        headers: {
+            "User-Agent": "Etrepro-scheduler"
+        }
+    })
+})
 
 const TOKEN = process.env.TOKEN;
 
@@ -47,6 +65,26 @@ app.get("hget/:key1/:key2", async c => {
     });
 });
 
+
+
+
+app.post("scheduler/:delay/:priority?", async c => {
+    const priority = c.req.param("priority")
+    const delay = parseInt(c.req.param("delay"))
+
+    const data = await c.req.json();
+
+    const { url, body } = data;
+
+
+
+    const { id } = await schedulerQueue.add({ url, body }, {
+        priority: !!priority ? parseInt(priority) : undefined,
+        delay: delay,
+    })
+
+    return c.json({ taskId: id })
+})
 
 
 export default {
